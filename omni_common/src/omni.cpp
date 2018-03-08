@@ -6,6 +6,8 @@
 #include <urdf/model.h>
 #include <sensor_msgs/JointState.h>
 
+#include <unistd.h>
+
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
@@ -21,6 +23,8 @@
 #include "omni_msgs/OmniButtonEvent.h"
 #include "omni_msgs/OmniFeedback.h"
 #include <pthread.h>
+
+#define DEVICE_NAME "Default PHANToM"
 
 float prev_time;
 int calibrationStyle;
@@ -295,7 +299,10 @@ int main(int argc, char** argv) {
   ////////////////////////////////////////////////////////////////
   HDErrorInfo error;
   HHD hHD;
-  hHD = hdInitDevice(HD_DEFAULT_DEVICE);
+  hHD = hdInitDevice(DEVICE_NAME);
+
+  // usleep(5e6);
+
   if (HD_DEVICE_ERROR(error = hdGetError())) {
     //hduPrintError(stderr, &error, "Failed to initialize haptic device");
     ROS_ERROR("Failed to initialize haptic device"); //: %s", &error);
@@ -335,4 +342,3 @@ int main(int argc, char** argv) {
 
   return 0;
 }
-
