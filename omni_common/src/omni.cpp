@@ -157,7 +157,7 @@ public:
     joint_state.name[4] = "pitch";
     joint_state.position[4] = -state->thetas[5] - 3*M_PI/4;
     joint_state.name[5] = "roll";
-    joint_state.position[5] = -state->thetas[6] - M_PI;
+    joint_state.position[5] = state->thetas[6] + M_PI;
     joint_pub.publish(joint_state);
 
     //Sample 'end effector' pose
@@ -342,3 +342,4 @@ int main(int argc, char** argv) {
 
   return 0;
 }
+
