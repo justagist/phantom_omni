@@ -2,6 +2,7 @@
 *.slo
 *.lo
 *.o
+*.pyc
 
 # Kernel Objects
 *.ko
@@ -18,3 +19,6 @@
 *.lai
 *.la
 *.a
+
+# Saved data 
+*.pkl
