@@ -1,3 +1,4 @@
+import time
 import copy
 import pybullet as pb
 import rospy
@@ -9,6 +10,23 @@ from aml_io.tools import save_data, load_data
 from kbhit import KBHit
 
 savefile = 'test.pkl'
+
+
+def Instructions():
+
+	return "\n\
+	Key Bindings \n\
+	\n\
+	e 				: 	Enable hand tracking\n\n\
+	1				: 	Start recording Sequence 1 of Trajectory\n\
+	2				: 	Start recording Sequence 2 of Trajectory\n\
+	3				: 	Start recording Sequence 3 of Trajectory\n\n\
+	r 				: 	Clear all Sequences of currenct Trajectory and reset hand to starting pose\n\
+	s 				: 	Save all recorded Sequences as a Trajectory\n\
+	q 				: 	Quit and write all recorded Trajectories\n\n\
+	<any other key>	: 	Disable hand tracking\n\n" 	
+	
+
 
 rospy.init_node('phantom_omni')
 omni_robot = PhantomOmni(scale=1e-2)
@@ -26,7 +44,7 @@ object_orientation = [0,0,0,1]#self.object.set_pos_ori(,[0,0,0,1])
 scene_obj.set_pos_ori(object_position,object_orientation)
 
 hand.create_constraint()
-pb.setRealTimeSimulation(1)
+# pb.setRealTimeSimulation(1)
 
 p_init, q_init = omni_robot.get_ee_pose()
 pose_init = (p_init, q_init)
@@ -46,15 +64,16 @@ hand.set_joint_state(np.array([0.0]*15), reset = True)
 
 rate = rospy.Rate(60)
 
-hand_joint = 0.0
-hand_delta = 0.01
+
+
 
 ## keyboard
 
 def main():
 	# keyboard = KBHit()
 	enabled = False
-
+	hand_joint = 0.0
+	hand_delta = 0.01
 
 	data_list = []
 
@@ -64,9 +83,10 @@ def main():
 	traj_type = -1
 	count = 0
 
+	print Instructions()
 
 	while not rospy.is_shutdown():
-
+		pb.stepSimulation()
 		# if keyboard.kbhit():
 		enable_KEY = ord('e') 
 		reset_KEY = ord('r')
@@ -78,15 +98,15 @@ def main():
 				enabled = True
 			elif ord('1') in keys:
 				traj_type = 1
-				print "Part 1 of trajectory"
+				print "Sequence 1 of trajectory"
 				# count = 0
 			elif ord('2') in keys:
 				traj_type = 2
 				# count = 0
-				print "Part 2 of trajectory"
+				print "Sequence 2 of trajectory"
 			elif ord('3') in keys:
 				traj_type = 3
-				print "Part 3 of trajectory"
+				print "Sequence 3 of trajectory"
 				# count = 0
 			else:
 				enabled = False
@@ -109,6 +129,14 @@ def main():
 						data_list.append(copy.deepcopy(data))
 
 						print "Done!"
+
+						count += 1
+
+						print "\nNumber of Saved Trajectories: %d\n"%count
+						time.sleep(1)
+
+					else:
+						print "No Sequences recorded to save!"
 
 					hand_pose_list = {}
 					joint_traj_list = {}
@@ -137,10 +165,6 @@ def main():
 				else:
 					hand_pose_list[traj_type] = [hand.get_base_pose()]
 					joint_traj_list[traj_type]= [hand.angles()]
-			# else:
-			# 	count = 0
-
-			# print count
 
 		else:
 			hand_pos0, _ = hand.get_base_pose()
@@ -165,7 +189,7 @@ def main():
 
 
 	if len(data_list) > 0:
-		print "Writing to file: '%s'"%savefile
+		print "Writing %d Trajectories to file: '%s'"%(count,savefile)
 		save_data(data_list, savefile)
 
 
@@ -174,12 +198,14 @@ def replay(filename = savefile):
 	data = load_data(filename)
 	for i in range(len(data)): # ----- number of trials, each trial is a dict with keys 'hand_poses_trajs' and 'joint_angles_trajs'
 		for j in data[i]['hand_poses_trajs']: # ----- each 'hand_poses_trajs' or 'joint_angles_trajs' is a dict with integer key values (starts from 1, max 3), denoting the parts of a demonstration (1: pre-grasp, 2: grasp, 3: post-grasp)
-			for k in data[i]['hand_poses_trajs'][j]: # ----- list of hand poses / joint angles in that part of the demonstration
-				print k
+			for k, a in zip(data[i]['hand_poses_trajs'][j], data[i]['joint_angles_trajs'][j]): # ----- list of hand poses / joint angles in that part of the demonstration
+				# print k
 				hand.set_base_pose(k[0], k[1], reset = False)
+
+				hand.set_joint_state(a, reset = False)
 				rate.sleep()
 
 
 if __name__ == '__main__':
-	# main()
-	replay()
+	main()
+	# replay()
