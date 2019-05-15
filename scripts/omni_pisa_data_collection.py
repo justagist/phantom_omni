@@ -1,3 +1,17 @@
+'''
+	Data collection script for collecting hand motion sequence using Phantom Omni for a Pisa Hand in PyBullet.
+
+				Key Bindings 	
+	e 				: 	Enable hand tracking
+	1				: 	Start recording Sequence 1 of Trajectory
+	2				: 	Start recording Sequence 2 of Trajectory
+	3				: 	Start recording Sequence 3 of Trajectory
+	r 				: 	Clear all Sequences of currenct Trajectory and reset hand to starting pose
+	s 				: 	Save all recorded Sequences as a Trajectory
+	q 				: 	Quit and write all recorded Trajectories
+	<any other key>	: 	Disable hand tracking
+
+'''
 import time
 import copy
 import pybullet as pb
@@ -11,6 +25,12 @@ from kbhit import KBHit
 
 savefile = 'test.pkl'
 
+hand = BulletPisaHand(phys_opt='gui')
+hand._bullet_robot.set_default()
+
+scene_obj = SceneObject(filename="cube_small.urdf", phys_id = hand._phys_id, phys_opt='none', fixed_base=False, scale=1.0)
+object_position = [0.5,0.6,-0.30]
+object_orientation = [-0.49081794,0.50897411,0.54080912,0.45559697] #[0,0,0,1]
 
 def Instructions():
 
@@ -21,7 +41,7 @@ def Instructions():
 	1				: 	Start recording Sequence 1 of Trajectory\n\
 	2				: 	Start recording Sequence 2 of Trajectory\n\
 	3				: 	Start recording Sequence 3 of Trajectory\n\n\
-	r 				: 	Clear all Sequences of currenct Trajectory and reset hand to starting pose\n\
+	r 				: 	Clear all Sequences of currenct Trajectory and reset hand (and object) to starting pose\n\
 	s 				: 	Save all recorded Sequences as a Trajectory\n\
 	q 				: 	Quit and write all recorded Trajectories\n\n\
 	<any other key>	: 	Disable hand tracking\n\n" 	
@@ -32,24 +52,18 @@ rospy.init_node('phantom_omni')
 omni_robot = PhantomOmni(scale=1e-2)
 
 
-hand = BulletPisaHand(phys_opt='gui')
-hand._bullet_robot.set_default()
-
 plane = SceneObject(phys_opt='none')
 plane.set_pos_ori([0.45, 0.1, -0.33], [0.0, 0.0, 0.0, 1.0])
 
-scene_obj = SceneObject(filename="cube_small.urdf", phys_id = hand._phys_id, phys_opt='none', fixed_base=False, scale=1.0)
-object_position = [0.5,0.6,-0.29]
-object_orientation = [0,0,0,1]#self.object.set_pos_ori(,[0,0,0,1])
 scene_obj.set_pos_ori(object_position,object_orientation)
 
 hand.create_constraint()
-# pb.setRealTimeSimulation(1)
+pb.setRealTimeSimulation(1)
 
 p_init, q_init = omni_robot.get_ee_pose()
 pose_init = (p_init, q_init)
 
-start_pos = [0,0,0.5]
+start_pos = [0.08456879, 0.58092121, 0.03845082]
 start_ori = q_init
 
 hand_pos0, hand_ori0 = pb.multiplyTransforms(start_pos,[0,0,0,1],[0,0,0],[0.707,0.,0.,0.707])
@@ -63,8 +77,6 @@ hand.set_base_pose(hand_pose[0],hand_pose[1], reset = True)
 hand.set_joint_state(np.array([0.0]*15), reset = True)
 
 rate = rospy.Rate(60)
-
-
 
 
 ## keyboard
@@ -83,10 +95,12 @@ def main():
 	traj_type = -1
 	count = 0
 
+	force = np.zeros(3)
 	print Instructions()
 
 	while not rospy.is_shutdown():
-		pb.stepSimulation()
+
+		# pb.stepSimulation()
 		# if keyboard.kbhit():
 		enable_KEY = ord('e') 
 		reset_KEY = ord('r')
@@ -118,6 +132,8 @@ def main():
 					hand_pose_list = {}
 					joint_traj_list = {}
 
+					scene_obj.set_pos_ori(object_position,object_orientation)
+
 				elif save_KEY in keys:
 					traj_type = -1
 
@@ -142,10 +158,7 @@ def main():
 					joint_traj_list = {}
 				elif quit_KEY in keys:
 					break
-
-
-			if enabled:
-				scene_obj.set_pos_ori(object_position,object_orientation)
+				
 
 
 		if enabled:
@@ -156,6 +169,19 @@ def main():
 			hand_pose = pb.multiplyTransforms(hand_pose[0], hand_pose[1], [0,0,0], [1,0,0,0])
 
 			hand.set_base_pose(p - omni_pos0 + hand_pos0, hand_pose[1], reset = False)
+
+			_, _, total_force = hand.get_contacts()
+
+			total_force = total_force*1e-3
+			force = force*0.9 + total_force*0.1
+			# print "force norm: ", np.linalg.norm(total_force)
+			# print "Force: ", total_force
+			print hand.get_base_pose()
+			# if hand_joint <= 0.3:
+				
+			# 	omni_robot.omni_force_feedback(force, gain = 1.0)
+			# else:
+			# 	omni_robot.omni_force_feedback(np.zeros(3), gain = 1.0)
 
 			if traj_type > 0:
 				# count += 1
@@ -189,8 +215,10 @@ def main():
 
 
 	if len(data_list) > 0:
-		print "Writing %d Trajectories to file: '%s'"%(count,savefile)
+		print "\nWriting %d Trajectories to file: '%s'\n"%(count,savefile)
 		save_data(data_list, savefile)
+	else:
+		print "\nNo trajectory recorded\n"
 
 
 def replay(filename = savefile):
