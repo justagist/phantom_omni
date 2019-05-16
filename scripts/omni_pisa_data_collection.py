@@ -17,6 +17,7 @@ import copy
 import pybullet as pb
 import rospy
 from omni_interface import PhantomOmni
+from omni_msgs.msg import PisaHandExperimentData as ExpDataMsg
 from aml_robot import BulletPisaHand, BulletGripper, SceneObject
 from aml_math import *
 import numpy as np
@@ -77,18 +78,42 @@ hand.set_base_pose(hand_pose[0],hand_pose[1], reset = True)
 hand.set_joint_state(np.array([0.0]*15), reset = True)
 
 rate = rospy.Rate(60)
+rostopic = "/pisa_exp/exp_data"
+
+def create_exp_data_msg(traj_id, pose, joint_angles):
+
+	msg = ExpDataMsg()
+	msg.header.stamp = rospy.Time.now()
+
+	msg.traj_id = traj_id
+
+	msg.hand_pose.position.x = pose[0][0]
+	msg.hand_pose.position.y = pose[0][1]
+	msg.hand_pose.position.z = pose[0][2]
+	msg.hand_pose.orientation.x = pose[1][0]
+	msg.hand_pose.orientation.y = pose[1][1]
+	msg.hand_pose.orientation.z = pose[1][2]
+	msg.hand_pose.orientation.w = pose[1][3]
+
+	msg.finger_link_angles = joint_angles
+
+	return msg
 
 
 ## keyboard
 
-def main():
+def collect_demo_to_bag():
 	# keyboard = KBHit()
+
+	pub = rospy.Publisher(rostopic, ExpDataMsg, queue_size = 1)
 	enabled = False
 	hand_joint = 0.0
 	hand_delta = 0.01
 
 	data_list = []
 
+	list1 = []
+	list2 = []
 	hand_pose_list = {}
 	joint_traj_list = {}
 
@@ -113,15 +138,119 @@ def main():
 			elif ord('1') in keys:
 				traj_type = 1
 				print "Sequence 1 of trajectory"
-				# count = 0
+
 			elif ord('2') in keys:
 				traj_type = 2
-				# count = 0
+
 				print "Sequence 2 of trajectory"
 			elif ord('3') in keys:
 				traj_type = 3
 				print "Sequence 3 of trajectory"
-				# count = 0
+
+			else:
+				enabled = False
+				if reset_KEY in keys:
+					hand.set_base_pose(start_pos,start_ori, reset = True)
+					hand.set_joint_state(np.array([0.0]*15), reset = True)
+					traj_type = -1
+
+					hand_pose_list = {}
+					joint_traj_list = {}
+
+					scene_obj.set_pos_ori(object_position,object_orientation)
+
+				elif quit_KEY in keys:
+					break
+				
+
+
+		if enabled:
+			p, q = omni_robot.get_ee_pose()
+
+
+			hand_pose = pb.multiplyTransforms([0,0,0], hand_ori0, [0,0,0], q)
+			hand_pose = pb.multiplyTransforms(hand_pose[0], hand_pose[1], [0,0,0], [1,0,0,0])
+
+			hand.set_base_pose(p - omni_pos0 + hand_pos0, hand_pose[1], reset = False)
+
+			_, _, total_force = hand.get_contacts()
+
+			total_force = total_force*1e-3
+			force = force*0.9 + total_force*0.1
+			# print "force norm: ", np.linalg.norm(total_force)
+			# print "Force: ", total_force
+			# print hand.get_base_pose()
+			if hand_joint <= 0.3:
+				
+				omni_robot.omni_force_feedback(force, gain = 1.0)
+			else:
+				omni_robot.omni_force_feedback(np.zeros(3), gain = 1.0)
+
+			if traj_type > 0:
+
+				pub.publish(create_exp_data_msg(traj_type, hand.get_base_pose(), hand.angles()))
+
+
+		else:
+			hand_pos0, _ = hand.get_base_pose()
+			omni_pos0, _ = omni_robot.get_ee_pose()
+
+
+
+		if omni_robot._omni_bt_state['white_bt']:
+			hand_joint -= hand_delta
+			hand_joint = max(hand_joint, 0.0)
+			hand.set_joint_state([hand_joint], reset = False)
+		elif omni_robot._omni_bt_state['grey_bt']:
+
+			hand_joint += hand_delta
+			hand_joint = min(hand_joint, 1.0)
+			hand.set_joint_state([hand_joint], reset = False)
+
+
+
+		rate.sleep()
+		
+
+def collect_data_to_file():
+	# keyboard = KBHit()
+	enabled = False
+	hand_joint = 0.0
+	hand_delta = 0.01
+
+	data_list = []
+
+	hand_pose_list = {}
+	joint_traj_list = {}
+
+	traj_type = -1
+	count = 0
+
+	force = np.zeros(3)
+	print Instructions()
+
+	while not rospy.is_shutdown():
+
+		enable_KEY = ord('e') 
+		reset_KEY = ord('r')
+		save_KEY = ord('s')
+		quit_KEY = ord('q')
+		keys = pb.getKeyboardEvents()
+		if len(keys) > 0: 
+			if enable_KEY in keys:
+				enabled = True
+			elif ord('1') in keys:
+				traj_type = 1
+				print "Sequence 1 of trajectory"
+				
+			elif ord('2') in keys:
+				traj_type = 2
+				
+				print "Sequence 2 of trajectory"
+			elif ord('3') in keys:
+				traj_type = 3
+				print "Sequence 3 of trajectory"
+				
 			else:
 				enabled = False
 				if reset_KEY in keys:
@@ -170,13 +299,13 @@ def main():
 
 			hand.set_base_pose(p - omni_pos0 + hand_pos0, hand_pose[1], reset = False)
 
-			_, _, total_force = hand.get_contacts()
+			# _, _, total_force = hand.get_contacts()
 
-			total_force = total_force*1e-3
-			force = force*0.9 + total_force*0.1
+			# total_force = total_force*1e-3
+			# force = force*0.9 + total_force*0.1
 			# print "force norm: ", np.linalg.norm(total_force)
 			# print "Force: ", total_force
-			print hand.get_base_pose()
+			# print hand.get_base_pose()
 			# if hand_joint <= 0.3:
 				
 			# 	omni_robot.omni_force_feedback(force, gain = 1.0)
@@ -221,7 +350,7 @@ def main():
 		print "\nNo trajectory recorded\n"
 
 
-def replay(filename = savefile):
+def replay_from_file(filename = savefile):
 
 	data = load_data(filename)
 	for i in range(len(data)): # ----- number of trials, each trial is a dict with keys 'hand_poses_trajs' and 'joint_angles_trajs'
@@ -234,6 +363,19 @@ def replay(filename = savefile):
 				rate.sleep()
 
 
+def move_hand_from_data_msg(msg):
+
+	hand.set_base_pose((msg.hand_pose.position.x,msg.hand_pose.position.y,msg.hand_pose.position.z), 
+						(msg.hand_pose.orientation.x,msg.hand_pose.orientation.y,msg.hand_pose.orientation.z,msg.hand_pose.orientation.w))
+
+def replay_from_rosbag():
+
+	rospy.Subscriber(rostopic, ExpDataMsg, move_hand_from_data_msg)
+	rospy.spin()
+
+
+
 if __name__ == '__main__':
-	main()
-	# replay()
+	# collect_demo_to_bag()
+	replay_from_rosbag()
+
